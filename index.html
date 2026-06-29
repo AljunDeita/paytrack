@@ -293,6 +293,12 @@
     }
     .form-group input:focus,
     .form-group select:focus { border-color: var(--accent); }
+    .field-hint {
+      font-size: 0.76rem;
+      color: var(--muted);
+      margin-top: 5px;
+      line-height: 1.4;
+    }
     .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .modal-actions {
       display: flex;
@@ -594,14 +600,33 @@
       </div>
       <div class="form-group">
         <label>Recurrence</label>
-        <select id="f-recurrence">
+        <select id="f-recurrence" onchange="toggleRecurrenceFields()">
           <option value="none">One-time</option>
-          <option value="monthly">Monthly</option>
+          <option value="monthly">Monthly (1x/month)</option>
+          <option value="twice-monthly">Twice a month</option>
           <option value="quarterly">Quarterly</option>
           <option value="annually">Annually</option>
         </select>
       </div>
     </div>
+
+    <div class="form-group" id="f-second-due-wrap" style="display:none;">
+      <label>Second Due Date (this month)</label>
+      <input type="date" id="f-second-due"/>
+      <p class="field-hint">e.g. paid on the 5th and the 20th — set the second date here.</p>
+    </div>
+
+    <div class="form-row" id="f-contract-wrap" style="display:none;">
+      <div class="form-group">
+        <label>Has an end date? (optional)</label>
+        <input type="date" id="f-end-date" onchange="recalcPaysLeftPreview()"/>
+      </div>
+      <div class="form-group">
+        <label>Pays Left (auto / override)</label>
+        <input type="number" id="f-pays-left" placeholder="auto-calculated" min="0"/>
+      </div>
+    </div>
+
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal()">Cancel</button>
       <button class="btn-submit" onclick="addPayable()">Add Payable</button>
@@ -687,11 +712,29 @@ function render() {
     const cardClass = { overdue: 'overdue', upcoming: 'upcoming', ok: '', paid: 'paid' }[status];
     const emoji = p.category.split(' ')[0];
 
+    const recurrenceLabel = {
+      none: 'one-time',
+      monthly: 'monthly',
+      'twice-monthly': 'twice a month',
+      quarterly: 'quarterly',
+      annually: 'annually'
+    }[p.recurrence] || p.recurrence;
+
+    let contractBit = '';
+    if (p.recurrence !== 'none') {
+      if (p.paysLeft !== null && p.paysLeft !== undefined) {
+        contractBit += ` · ${p.paysLeft} pay${p.paysLeft !== 1 ? 's' : ''} left`;
+      }
+      if (p.endDate) {
+        contractBit += ` · ends ${new Date(p.endDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+      }
+    }
+
     return `<div class="payable-card ${cardClass}" data-id="${p.id}">
       <div class="payable-icon">${emoji}</div>
       <div class="payable-info">
         <div class="payable-name">${p.name}</div>
-        <div class="payable-meta">${p.category.replace(emoji, '').trim()} · ${daysLabel} · ${p.recurrence !== 'none' ? p.recurrence : 'one-time'}</div>
+        <div class="payable-meta">${p.category.replace(emoji, '').trim()} · ${daysLabel} · ${recurrenceLabel}${contractBit}</div>
       </div>
       <div class="payable-amount">${fmt(p.amount)}</div>
       <div class="payable-status ${statusClass}">${statusLabel}</div>
@@ -747,20 +790,58 @@ function setFilter(f, el) {
 
 function markPaid(id) {
   const p = payables.find(x => x.id === id);
-  if (p) { p.paid = true; p.paidAt = today(); }
-  if (p && p.recurrence !== 'none') {
-    const months = { monthly: 1, quarterly: 3, annually: 12 }[p.recurrence] || 1;
-    const d = new Date(p.due);
-    d.setMonth(d.getMonth() + months);
-    payables.push({
-      ...p,
-      id: Date.now() + '-' + Math.random(),
-      due: d.toISOString().split('T')[0],
-      paid: false,
-      paidAt: null
-    });
+  if (!p) return;
+  p.paid = true; p.paidAt = today();
+
+  if (p.recurrence !== 'none') {
+    const nextDue = getNextDueDate(p);
+    const pastEnd = p.endDate && nextDue && new Date(nextDue) > new Date(p.endDate);
+    const paysLeftAfter = (p.paysLeft !== null && p.paysLeft !== undefined) ? p.paysLeft - 1 : null;
+    const outOfPays = paysLeftAfter !== null && paysLeftAfter <= 0;
+
+    if (nextDue && !pastEnd && !outOfPays) {
+      payables.push({
+        ...p,
+        id: Date.now() + '-' + Math.random(),
+        due: nextDue,
+        secondDue: p.recurrence === 'twice-monthly' ? getNextSecondDue(p) : p.secondDue,
+        paysLeft: paysLeftAfter,
+        paid: false,
+        paidAt: null
+      });
+    }
   }
   save(); render();
+}
+
+// For twice-monthly: alternate between due and secondDue each "pay".
+// For others: step forward by the recurrence interval.
+function getNextDueDate(p) {
+  const d = new Date(p.due);
+  if (p.recurrence === 'twice-monthly' && p.secondDue) {
+    // Move to the second date of the same period, or to next month's first date
+    const second = new Date(p.secondDue);
+    if (second > d) {
+      return p.secondDue; // jump to second date this cycle
+    } else {
+      const next = new Date(d);
+      next.setMonth(next.getMonth() + 1);
+      return next.toISOString().split('T')[0];
+    }
+  }
+  const months = { monthly: 1, quarterly: 3, annually: 12 }[p.recurrence] || 0;
+  if (!months) return null;
+  d.setMonth(d.getMonth() + months);
+  return d.toISOString().split('T')[0];
+}
+function getNextSecondDue(p) {
+  if (!p.secondDue) return null;
+  const due = new Date(p.due);
+  const second = new Date(p.secondDue);
+  if (second > due) return p.secondDue; // unchanged within same cycle
+  const next = new Date(second);
+  next.setMonth(next.getMonth() + 1);
+  return next.toISOString().split('T')[0];
 }
 function markUnpaid(id) {
   const p = payables.find(x => x.id === id);
@@ -777,6 +858,37 @@ function deletePayable(id) {
 function openModal() {
   document.getElementById('modal').classList.add('open');
   document.getElementById('f-due').value = today();
+  document.getElementById('f-recurrence').value = 'none';
+  document.getElementById('f-end-date').value = '';
+  document.getElementById('f-pays-left').value = '';
+  document.getElementById('f-second-due').value = '';
+  toggleRecurrenceFields();
+}
+function toggleRecurrenceFields() {
+  const rec = document.getElementById('f-recurrence').value;
+  document.getElementById('f-second-due-wrap').style.display = (rec === 'twice-monthly') ? 'block' : 'none';
+  document.getElementById('f-contract-wrap').style.display = (rec === 'none') ? 'none' : 'block';
+}
+function paysPerYear(recurrence) {
+  return { monthly: 12, 'twice-monthly': 24, quarterly: 4, annually: 1 }[recurrence] || 0;
+}
+function calcPaysLeft(dueStr, endStr, recurrence) {
+  if (!endStr || recurrence === 'none') return null;
+  const due = new Date(dueStr);
+  const end = new Date(endStr);
+  if (end <= due) return 0;
+  const perYear = paysPerYear(recurrence);
+  if (!perYear) return null;
+  const msPerPay = (365.25 * 86400000) / perYear;
+  const remaining = Math.max(0, Math.round((end - due) / msPerPay));
+  return remaining;
+}
+function recalcPaysLeftPreview() {
+  const due = document.getElementById('f-due').value;
+  const end = document.getElementById('f-end-date').value;
+  const rec = document.getElementById('f-recurrence').value;
+  const left = calcPaysLeft(due, end, rec);
+  if (left !== null) document.getElementById('f-pays-left').placeholder = `auto: ${left} left`;
 }
 function closeModal() {
   document.getElementById('modal').classList.remove('open');
@@ -787,14 +899,27 @@ function addPayable() {
   const due = document.getElementById('f-due').value;
   const category = document.getElementById('f-category').value;
   const recurrence = document.getElementById('f-recurrence').value;
+  const endDate = document.getElementById('f-end-date').value || null;
+  const secondDue = document.getElementById('f-second-due').value || null;
+  const paysLeftOverride = document.getElementById('f-pays-left').value;
 
   if (!name || isNaN(amount) || !due) {
     alert('Please fill in name, amount, and due date.');
     return;
   }
+  if (recurrence === 'twice-monthly' && !secondDue) {
+    alert('Please set the second due date for a twice-a-month payable.');
+    return;
+  }
+
+  const paysLeft = paysLeftOverride !== ''
+    ? parseInt(paysLeftOverride, 10)
+    : calcPaysLeft(due, endDate, recurrence);
+
   payables.push({
     id: Date.now() + '-' + Math.random(),
     name, amount, due, category, recurrence,
+    endDate, secondDue, paysLeft,
     paid: false, paidAt: null
   });
   save(); render(); closeModal();
@@ -874,9 +999,9 @@ function maybeSeedSamples() {
     const now = new Date();
     const m = now.getMonth(), y = now.getFullYear();
     payables = [
-      { id: 's1', name: 'Meralco Electric Bill', amount: 2850, due: new Date(y, m, 5).toISOString().split('T')[0], category: '💡 Utilities', recurrence: 'monthly', paid: false, paidAt: null },
-      { id: 's2', name: 'Converge Internet', amount: 1599, due: new Date(y, m, 15).toISOString().split('T')[0], category: '🌐 Internet', recurrence: 'monthly', paid: false, paidAt: null },
-      { id: 's3', name: 'BDO Credit Card', amount: 12500, due: new Date(y, m, 20).toISOString().split('T')[0], category: '💳 Credit Card', recurrence: 'monthly', paid: false, paidAt: null },
+      { id: 's1', name: 'Meralco Electric Bill', amount: 2850, due: new Date(y, m, 5).toISOString().split('T')[0], category: '💡 Utilities', recurrence: 'monthly', endDate: null, secondDue: null, paysLeft: null, paid: false, paidAt: null },
+      { id: 's2', name: 'Converge Internet', amount: 1599, due: new Date(y, m, 15).toISOString().split('T')[0], category: '🌐 Internet', recurrence: 'monthly', endDate: null, secondDue: null, paysLeft: null, paid: false, paidAt: null },
+      { id: 's3', name: 'BDO Credit Card', amount: 12500, due: new Date(y, m, 20).toISOString().split('T')[0], category: '💳 Credit Card', recurrence: 'monthly', endDate: null, secondDue: null, paysLeft: null, paid: false, paidAt: null },
     ];
     save();
   }
