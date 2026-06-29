@@ -5,6 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>PayTrack — Your Payables Dashboard</title>
   <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet"/>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getFirestore, doc, setDoc, getDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+    window.__firebaseSDK = { initializeApp, getFirestore, doc, setDoc, getDoc, onSnapshot };
+    window.dispatchEvent(new Event('firebase-sdk-ready'));
+  </script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -65,6 +71,61 @@
       color: #d1d5db;
     }
     #notif-status.granted { color: #86efac; }
+    #sync-status {
+      font-size: 0.78rem;
+      background: rgba(255,255,255,0.1);
+      border-radius: 20px;
+      padding: 5px 12px;
+      color: #d1d5db;
+      transition: background 0.15s;
+    }
+    #sync-status:hover { background: rgba(255,255,255,0.18); }
+    #sync-status.connected { color: #86efac; }
+    #sync-status.syncing { color: #fde68a; }
+
+    /* SYNC MODAL */
+    .sync-modal .modal { max-width: 520px; text-align: left; }
+    .sync-tabs { display: flex; gap: 6px; margin-bottom: 18px; }
+    .sync-tab {
+      flex: 1;
+      padding: 9px;
+      border-radius: 10px;
+      border: 1.5px solid var(--border);
+      background: var(--bg);
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      color: var(--muted);
+      font-family: 'DM Sans', sans-serif;
+    }
+    .sync-tab.active { background: var(--accent); border-color: var(--accent); color: white; }
+    .sync-panel { display: none; }
+    .sync-panel.active { display: block; }
+    .code-box {
+      background: #0F172A;
+      color: #E2E8F0;
+      border-radius: 10px;
+      padding: 14px 16px;
+      font-family: monospace;
+      font-size: 0.8rem;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      margin: 10px 0;
+      line-height: 1.5;
+    }
+    .sync-code-display {
+      font-family: monospace;
+      font-size: 1.4rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-align: center;
+      background: var(--accent-light);
+      border: 1.5px dashed var(--accent);
+      border-radius: 10px;
+      padding: 14px;
+      margin: 14px 0;
+      color: var(--accent);
+    }
 
     /* MAIN LAYOUT */
     main {
@@ -564,6 +625,7 @@
 <header>
   <div class="logo">Pay<span>Track</span></div>
   <div class="header-right">
+    <span id="sync-status" onclick="openSyncModal()" style="cursor:pointer;">☁️ Sync: Local only</span>
     <span id="notif-status">🔔 Notifications off</span>
   </div>
 </header>
@@ -682,6 +744,95 @@
     </div>
   </div>
 
+  <div class="deploy-section">
+    <h2>☁️ Sync Across Devices with Google Firebase (Free)</h2>
+    <p class="subtitle">By default, your data is saved only in this browser. Follow these steps once to enable automatic syncing across every browser and device — completely free, no credit card required.</p>
+    <div class="deploy-steps">
+
+      <div class="deploy-step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <strong>Create a free Firebase project</strong>
+          <p>Go to <a href="https://console.firebase.google.com" target="_blank">console.firebase.google.com</a> and sign in with any Google account. Click <strong>Create a project</strong>. Name it anything, e.g. <code>paytrack</code>. You can disable Google Analytics when asked — not needed. Click <strong>Create project</strong> and wait about 30 seconds.</p>
+        </div>
+      </div>
+
+      <div class="deploy-step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <strong>Create a Firestore database</strong>
+          <p>In the left sidebar, click <strong>Build → Firestore Database</strong>. Click <strong>Create database</strong>. Choose any region close to you. When asked about rules, select <strong>Start in test mode</strong> (you can tighten this later — see step 6). Click <strong>Create</strong>.</p>
+        </div>
+      </div>
+
+      <div class="deploy-step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <strong>Register a Web App</strong>
+          <p>Click the gear icon (top left, next to "Project Overview") → <strong>Project settings</strong>. Scroll down to <strong>Your apps</strong> → click the <strong>&lt;/&gt;</strong> (Web) icon. Give it a nickname like <code>paytrack-web</code>. Click <strong>Register app</strong>. You do <em>not</em> need Firebase Hosting — skip that checkbox.</p>
+        </div>
+      </div>
+
+      <div class="deploy-step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <strong>Copy your config object</strong>
+          <p>After registering, Firebase shows a code snippet containing a <code>firebaseConfig</code> object that looks like this:</p>
+          <div class="code-box">{
+  apiKey: "AIzaSy...",
+  authDomain: "paytrack-xxxxx.firebaseapp.com",
+  projectId: "paytrack-xxxxx",
+  storageBucket: "paytrack-xxxxx.appspot.com",
+  messagingSenderId: "...",
+  appId: "..."
+}</div>
+          <p>Copy the entire <code>{ ... }</code> object, including the curly braces.</p>
+        </div>
+      </div>
+
+      <div class="deploy-step">
+        <div class="step-num">5</div>
+        <div class="step-body">
+          <strong>Paste it into PayTrack</strong>
+          <p>Back in PayTrack, click <strong>☁️ Sync: Local only</strong> in the top-right corner. Paste your config object into the box under <strong>1. Connect Firebase</strong>, then click <strong>Save & Connect</strong>. You'll be given a unique <strong>Sync Code</strong> — this is what links your devices together.</p>
+        </div>
+      </div>
+
+      <div class="deploy-step">
+        <div class="step-num">6</div>
+        <div class="step-body">
+          <strong>Connect your other devices</strong>
+          <p>On your second device or browser, open the same PayTrack site, click <strong>☁️ Sync</strong>, paste the <em>same</em> Firebase config (step 4), click <strong>Save & Connect</strong>, then go to the <strong>2. Sync Code</strong> tab and enter the sync code from your first device under <strong>"Already have a code from another device?"</strong>. Both devices will now read and write the same data automatically.</p>
+        </div>
+      </div>
+
+      <div class="deploy-step">
+        <div class="step-num">7</div>
+        <div class="step-body">
+          <strong>Make it fully automatic (no codes, no setup on new devices)</strong>
+          <p>After connecting, go to <strong>☁️ Sync → 2. Sync Code</strong> tab and click <strong>📋 Copy Snippet</strong>. Open your saved <code>index.html</code> file in any text editor, find the two lines near the top of the <code>&lt;script&gt;</code> tag starting with <code>const BAKED_FIREBASE_CONFIG = null;</code>, and replace them with the copied snippet. Save the file and re-upload it (step 4 of the GitHub Pages guide above). From then on, opening the published link on <em>any</em> device or browser will show your synced data immediately — automatically, with nothing to click.</p>
+        </div>
+      </div>
+
+      <div class="deploy-step">
+        <div class="step-num">🔒</div>
+        <div class="step-body">
+          <strong>Optional: lock down your database rules</strong>
+          <p>Test mode leaves your database open to anyone with the URL for 30 days, then locks automatically. For long-term use, go to <strong>Firestore Database → Rules</strong> in Firebase Console and restrict access, since this is a personal finance tool. A simple safer rule: allow read/write only on the specific <code>paytrack</code> collection. If you're unsure how to write Firestore rules, ask Claude to help you write one tailored to this setup.</p>
+        </div>
+      </div>
+
+      <div class="deploy-step">
+        <div class="step-num">💰</div>
+        <div class="step-body">
+          <strong>Will this stay free?</strong>
+          <p>Firebase's free "Spark" plan includes 1 GiB of storage and 50,000 reads / 20,000 writes per day — far more than a personal payables tracker will ever use. You won't be charged unless you manually upgrade to a paid plan.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
 </main>
 
 <!-- ADD PAYABLE MODAL -->
@@ -774,12 +925,244 @@
   </div>
 </div>
 
+<!-- SYNC SETTINGS MODAL -->
+<div class="modal-overlay sync-modal" id="sync-modal">
+  <div class="modal">
+    <h3>☁️ Cloud Sync</h3>
+    <p class="field-hint" style="margin-bottom:16px;">Sync your payables across browsers and devices using a free Google Firebase database. See the step-by-step setup guide further down this page if you haven't created a Firebase project yet.</p>
+
+    <div class="sync-tabs">
+      <button class="sync-tab active" id="tab-connect" onclick="showSyncTab('connect')">1. Connect Firebase</button>
+      <button class="sync-tab" id="tab-code" onclick="showSyncTab('code')">2. Sync Code</button>
+    </div>
+
+    <div class="sync-panel active" id="panel-connect">
+      <div class="form-group">
+        <label>Paste your Firebase config object</label>
+        <textarea id="f-firebase-config" rows="7" style="width:100%;font-family:monospace;font-size:0.8rem;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--bg);color:var(--ink);" placeholder='{
+  "apiKey": "...",
+  "authDomain": "...",
+  "projectId": "...",
+  ...
+}'></textarea>
+        <p class="field-hint">Copy this from Firebase Console → Project Settings → Your apps → SDK setup and configuration. See step 4 of the guide below.</p>
+      </div>
+      <button class="btn-submit" style="width:100%;" onclick="saveFirebaseConfig()">Save & Connect</button>
+    </div>
+
+    <div class="sync-panel" id="panel-code">
+      <div id="sync-code-section"></div>
+    </div>
+
+    <button class="detail-close-btn" onclick="closeSyncModal()">Close</button>
+  </div>
+</div>
+
 <script>
 // ─── DATA ───────────────────────────────────────────────
 const STORAGE_KEY = 'paytrack_payables_v1';
+const FIREBASE_CONFIG_KEY = 'paytrack_firebase_config';
+const SYNC_CODE_KEY = 'paytrack_sync_code';
+
+// ── BAKE-IN POINT ──
+// Once you connect Firebase via the ☁️ Sync button, click "Bake into this file"
+// to fill these two constants in. Any device that opens this same saved/published
+// HTML file will then auto-connect and auto-sync — no setup steps on other devices.
+const BAKED_FIREBASE_CONFIG = null; // e.g. { apiKey: "...", authDomain: "...", projectId: "...", ... }
+const BAKED_SYNC_CODE = null;       // e.g. "AB12-CD34"
+
 let payables = [];
 let currentFilter = 'all';
 
+// ─── CLOUD SYNC (Firebase) ──────────────────────────────
+let fbApp = null, fbDb = null, fbUnsub = null;
+let syncCode = BAKED_SYNC_CODE || localStorage.getItem(SYNC_CODE_KEY) || null;
+let suppressNextSnapshot = false;
+
+function genSyncCode() {
+  return Math.random().toString(36).substring(2, 6).toUpperCase() + '-' +
+         Math.random().toString(36).substring(2, 6).toUpperCase();
+}
+
+function initFirebaseIfConfigured() {
+  // Priority 1: a config baked directly into this HTML file — works automatically
+  // on every device that opens this exact file, no manual setup needed.
+  if (BAKED_FIREBASE_CONFIG) {
+    window.addEventListener('firebase-sdk-ready', () => connectFirebase(BAKED_FIREBASE_CONFIG), { once: true });
+    if (window.__firebaseSDK) connectFirebase(BAKED_FIREBASE_CONFIG);
+    return;
+  }
+  // Priority 2: a config saved earlier in this browser's localStorage
+  // (works automatically on THIS device/browser only, every time you reopen the page).
+  const raw = localStorage.getItem(FIREBASE_CONFIG_KEY);
+  if (!raw) { setSyncStatus('local'); return; }
+  window.addEventListener('firebase-sdk-ready', () => connectFirebase(JSON.parse(raw)), { once: true });
+  if (window.__firebaseSDK) connectFirebase(JSON.parse(raw));
+}
+
+function connectFirebase(config) {
+  try {
+    const { initializeApp, getFirestore } = window.__firebaseSDK;
+    fbApp = initializeApp(config);
+    fbDb = getFirestore(fbApp);
+    if (!syncCode) {
+      syncCode = genSyncCode();
+      localStorage.setItem(SYNC_CODE_KEY, syncCode);
+    }
+    setSyncStatus('connected');
+    subscribeToCloud();
+  } catch (e) {
+    console.error('Firebase connection failed:', e);
+    setSyncStatus('error');
+  }
+}
+
+function subscribeToCloud() {
+  if (!fbDb || !syncCode) return;
+  const { doc, onSnapshot, getDoc } = window.__firebaseSDK;
+  const ref = doc(fbDb, 'paytrack', syncCode);
+
+  // First, check if cloud already has data (e.g. joining from a new device)
+  getDoc(ref).then(snap => {
+    if (snap.exists() && snap.data().payables) {
+      payables = snap.data().payables;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(payables));
+      render();
+    } else {
+      pushToCloud(); // seed the cloud with whatever this device already has
+    }
+  }).catch(() => {});
+
+  if (fbUnsub) fbUnsub();
+  fbUnsub = onSnapshot(ref, (snap) => {
+    if (suppressNextSnapshot) { suppressNextSnapshot = false; return; }
+    if (snap.exists() && snap.data().payables) {
+      payables = snap.data().payables;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(payables));
+      render();
+    }
+  });
+}
+
+function pushToCloud() {
+  if (!fbDb || !syncCode) return;
+  const { doc, setDoc } = window.__firebaseSDK;
+  suppressNextSnapshot = true; // avoid re-render loop from our own write
+  setDoc(doc(fbDb, 'paytrack', syncCode), { payables, updatedAt: Date.now() }).catch(e => {
+    console.error('Cloud sync failed:', e);
+  });
+}
+
+function setSyncStatus(state) {
+  const el = document.getElementById('sync-status');
+  el.classList.remove('connected', 'syncing');
+  if (state === 'connected') {
+    const auto = !!BAKED_FIREBASE_CONFIG;
+    el.textContent = auto ? `☁️ Auto-synced (${syncCode})` : `☁️ Synced (${syncCode})`;
+    el.classList.add('connected');
+  } else if (state === 'syncing') {
+    el.textContent = '☁️ Syncing...';
+    el.classList.add('syncing');
+  } else if (state === 'error') {
+    el.textContent = '☁️ Sync error — click to fix';
+  } else {
+    el.textContent = '☁️ Sync: Local only';
+  }
+}
+
+function saveFirebaseConfig() {
+  const raw = document.getElementById('f-firebase-config').value.trim();
+  if (!raw) { alert('Please paste your Firebase config object.'); return; }
+  let parsed;
+  try {
+    // Allow pasting either valid JSON or a JS object literal (unquoted keys)
+    parsed = JSON.parse(raw);
+  } catch {
+    try {
+      parsed = eval('(' + raw + ')');
+    } catch {
+      alert('Could not read that config. Make sure you copied the whole object from Firebase.');
+      return;
+    }
+  }
+  localStorage.setItem(FIREBASE_CONFIG_KEY, JSON.stringify(parsed));
+  connectFirebase(parsed);
+  showSyncTab('code');
+  renderSyncCodeSection();
+}
+
+function showSyncTab(tab) {
+  document.getElementById('tab-connect').classList.toggle('active', tab === 'connect');
+  document.getElementById('tab-code').classList.toggle('active', tab === 'code');
+  document.getElementById('panel-connect').classList.toggle('active', tab === 'connect');
+  document.getElementById('panel-code').classList.toggle('active', tab === 'code');
+  if (tab === 'code') renderSyncCodeSection();
+}
+
+function renderSyncCodeSection() {
+  const el = document.getElementById('sync-code-section');
+  if (!fbDb) {
+    el.innerHTML = `<p class="field-hint">Connect Firebase first (Tab 1) before getting your sync code.</p>`;
+    return;
+  }
+  const configRaw = localStorage.getItem(FIREBASE_CONFIG_KEY);
+  const configObj = configRaw ? JSON.parse(configRaw) : null;
+  const bakeSnippet = configObj
+    ? `const BAKED_FIREBASE_CONFIG = ${JSON.stringify(configObj, null, 2)};\nconst BAKED_SYNC_CODE = "${syncCode}";`
+    : '';
+
+  el.innerHTML = `
+    <p class="field-hint">This is your private sync code. Right now it's only auto-applied on <strong>this browser</strong>. To make syncing fully automatic on every device — no setup, no codes to enter — bake it into the file itself:</p>
+    <div class="sync-code-display">${syncCode}</div>
+
+    <div style="margin: 18px 0;">
+      <strong style="font-size:0.85rem;">Make this automatic on every device</strong>
+      <p class="field-hint" style="margin:6px 0 10px;">Copy the snippet below, open your saved <code>index.html</code> in any text editor, find the line that starts with <code>const BAKED_FIREBASE_CONFIG = null;</code> near the top of the &lt;script&gt; tag, and replace both that line and the one below it with this:</p>
+      <div class="code-box">${bakeSnippet.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+      <button class="btn-action" style="width:100%;padding:9px;" onclick="copyBakeSnippet()">📋 Copy Snippet</button>
+      <p class="field-hint" style="margin-top:8px;">Save the file and re-upload it (e.g. to GitHub Pages). Every device that opens that file from then on will auto-connect and show the same synced data immediately — no Sync button, no codes.</p>
+    </div>
+
+    <div class="form-group">
+      <label>Manually join a different code on this browser only</label>
+      <input type="text" id="f-join-code" placeholder="Paste sync code here" style="text-transform:uppercase;"/>
+    </div>
+    <button class="btn-submit" style="width:100%;" onclick="joinSyncCode()">Use This Code Instead</button>
+  `;
+}
+
+function copyBakeSnippet() {
+  const configRaw = localStorage.getItem(FIREBASE_CONFIG_KEY);
+  const configObj = configRaw ? JSON.parse(configRaw) : null;
+  if (!configObj) return;
+  const snippet = `const BAKED_FIREBASE_CONFIG = ${JSON.stringify(configObj, null, 2)};\nconst BAKED_SYNC_CODE = "${syncCode}";`;
+  navigator.clipboard.writeText(snippet).then(() => {
+    alert('Copied! Paste it into your index.html, replacing the two BAKED_ lines near the top of the script.');
+  }).catch(() => {
+    alert('Could not copy automatically — please select and copy the snippet manually.');
+  });
+}
+
+function joinSyncCode() {
+  const code = document.getElementById('f-join-code').value.trim().toUpperCase();
+  if (!code) return;
+  syncCode = code;
+  localStorage.setItem(SYNC_CODE_KEY, syncCode);
+  subscribeToCloud();
+  renderSyncCodeSection();
+  alert('Switched to sync code ' + code + '. Your data will update once it pulls from the cloud.');
+}
+
+function openSyncModal() {
+  document.getElementById('sync-modal').classList.add('open');
+  const hasConfig = !!localStorage.getItem(FIREBASE_CONFIG_KEY);
+  showSyncTab(hasConfig ? 'code' : 'connect');
+}
+function closeSyncModal() {
+  document.getElementById('sync-modal').classList.remove('open');
+}
+
+// ─── LOCAL STORAGE (always the immediate fallback/cache) ─
 function load() {
   try {
     payables = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
@@ -787,6 +1170,7 @@ function load() {
 }
 function save() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(payables));
+  if (fbDb) pushToCloud();
 }
 
 // ─── DATES ──────────────────────────────────────────────
@@ -1240,6 +1624,9 @@ document.getElementById('modal').addEventListener('click', function(e) {
 document.getElementById('detail-modal').addEventListener('click', function(e) {
   if (e.target === this) closeDetailModal();
 });
+document.getElementById('sync-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeSyncModal();
+});
 
 // ─── NOTIFICATIONS ──────────────────────────────────────
 function checkNotifBanner() {
@@ -1327,6 +1714,7 @@ load();
 maybeSeedSamples();
 render();
 checkNotifBanner();
+initFirebaseIfConfigured();
 </script>
 </body>
 </html>
