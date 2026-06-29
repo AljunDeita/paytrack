@@ -299,6 +299,121 @@
       margin-top: 5px;
       line-height: 1.4;
     }
+
+    /* DUE DATES SECTION */
+    .due-dates-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+    .due-date-card {
+      background: var(--card);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+    }
+    .due-date-card .dd-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .due-date-card .dd-title {
+      font-family: 'DM Serif Display', serif;
+      font-size: 1.05rem;
+    }
+    .due-date-card .dd-total {
+      font-family: 'DM Serif Display', serif;
+      font-size: 1.3rem;
+      color: var(--accent);
+    }
+    .dd-items {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .dd-item {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.82rem;
+      color: var(--muted);
+      padding: 4px 0;
+      border-bottom: 1px dashed var(--border);
+    }
+    .dd-item:last-child { border-bottom: none; }
+    .dd-item span.name { color: var(--ink); font-weight: 500; }
+    .dd-empty { font-size: 0.82rem; color: var(--muted); font-style: italic; padding: 6px 0; }
+
+    /* PAYABLE DETAIL TRIGGER */
+    .payable-name-link {
+      cursor: pointer;
+      text-decoration: underline;
+      text-decoration-color: transparent;
+      transition: text-decoration-color 0.15s;
+    }
+    .payable-name-link:hover { text-decoration-color: currentColor; }
+
+    /* DETAIL MODAL */
+    .detail-modal .modal { max-width: 480px; }
+    .detail-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin: 18px 0;
+    }
+    .detail-stat {
+      background: var(--bg);
+      border-radius: 10px;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+    }
+    .detail-stat .d-label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .detail-stat .d-value {
+      font-family: 'DM Serif Display', serif;
+      font-size: 1.2rem;
+    }
+    .progress-bar-wrap { margin: 14px 0 6px; }
+    .progress-bar-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .progress-bar-track {
+      background: var(--border);
+      border-radius: 20px;
+      height: 10px;
+      overflow: hidden;
+    }
+    .progress-bar-fill {
+      background: var(--accent);
+      height: 100%;
+      border-radius: 20px;
+      transition: width 0.3s;
+    }
+    .detail-close-btn {
+      width: 100%;
+      margin-top: 18px;
+      background: var(--ink);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      padding: 11px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.93rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
     .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .modal-actions {
       display: flex;
@@ -483,6 +598,9 @@
     <span id="next-due-text">Loading next payment date...</span>
   </div>
 
+  <!-- Due on 5th / 20th breakdown -->
+  <div class="due-dates-grid" id="due-dates-grid"></div>
+
   <!-- Filter + Add -->
   <div class="section-header">
     <h2>Payables</h2>
@@ -618,12 +736,25 @@
 
     <div class="form-row" id="f-contract-wrap" style="display:none;">
       <div class="form-group">
-        <label>Has an end date? (optional)</label>
+        <label>Loan/Contract Start Date</label>
+        <input type="date" id="f-start-date" onchange="recalcPaysLeftPreview()"/>
+        <p class="field-hint">When the first payment was made or the contract began.</p>
+      </div>
+      <div class="form-group">
+        <label>Total Term (months, optional)</label>
+        <input type="number" id="f-total-months" placeholder="e.g. 24" min="1" onchange="recalcPaysLeftPreview()"/>
+        <p class="field-hint">Total number of payments for the full loan/contract.</p>
+      </div>
+    </div>
+    <div class="form-row" id="f-payslef-wrap" style="display:none;">
+      <div class="form-group">
+        <label>End Date (optional, alternative to Total Term)</label>
         <input type="date" id="f-end-date" onchange="recalcPaysLeftPreview()"/>
       </div>
       <div class="form-group">
-        <label>Pays Left (auto / override)</label>
+        <label>Months/Pays Remaining</label>
         <input type="number" id="f-pays-left" placeholder="auto-calculated" min="0"/>
+        <p class="field-hint" id="pays-left-preview"></p>
       </div>
     </div>
 
@@ -631,6 +762,15 @@
       <button class="btn-cancel" onclick="closeModal()">Cancel</button>
       <button class="btn-submit" onclick="addPayable()">Add Payable</button>
     </div>
+  </div>
+</div>
+
+<!-- PAYABLE DETAIL MODAL -->
+<div class="modal-overlay detail-modal" id="detail-modal">
+  <div class="modal">
+    <h3 id="detail-title">Payable Details</h3>
+    <div id="detail-body"></div>
+    <button class="detail-close-btn" onclick="closeDetailModal()">Close</button>
   </div>
 </div>
 
@@ -673,6 +813,7 @@ function fmt(n) {
 function render() {
   updateSummary();
   updateNextDue();
+  updateDueDatesGrid();
 
   const list = document.getElementById('payables-list');
   const filtered = payables.filter(p => {
@@ -733,7 +874,7 @@ function render() {
     return `<div class="payable-card ${cardClass}" data-id="${p.id}">
       <div class="payable-icon">${emoji}</div>
       <div class="payable-info">
-        <div class="payable-name">${p.name}</div>
+        <div class="payable-name ${p.recurrence !== 'none' ? 'payable-name-link' : ''}" ${p.recurrence !== 'none' ? `onclick="openDetailModal('${p.id}')"` : ''}>${p.name}</div>
         <div class="payable-meta">${p.category.replace(emoji, '').trim()} · ${daysLabel} · ${recurrenceLabel}${contractBit}</div>
       </div>
       <div class="payable-amount">${fmt(p.amount)}</div>
@@ -780,6 +921,110 @@ function updateNextDue() {
     `Next notification reminder: ${dateStr} (in ${daysUntil} day${daysUntil !== 1 ? 's' : ''}) — the 5th and 20th of every month`;
 }
 
+function getDayOfMonth(dateStr) {
+  return new Date(dateStr).getDate();
+}
+
+function updateDueDatesGrid() {
+  const unpaid = payables.filter(p => !p.paid);
+
+  // A payable's "pay dates" are its due date, and secondDue if twice-monthly
+  const due5 = [];
+  const due20 = [];
+
+  unpaid.forEach(p => {
+    const dates = [{ date: p.due, amount: p.amount }];
+    if (p.recurrence === 'twice-monthly' && p.secondDue) {
+      dates.push({ date: p.secondDue, amount: p.amount });
+    }
+    dates.forEach(d => {
+      const day = getDayOfMonth(d.date);
+      if (day === 5) due5.push({ name: p.name, amount: d.amount });
+      else if (day === 20) due20.push({ name: p.name, amount: d.amount });
+    });
+  });
+
+  const grid = document.getElementById('due-dates-grid');
+  grid.innerHTML = [
+    renderDueDateCard('Due on the 5th', due5),
+    renderDueDateCard('Due on the 20th', due20)
+  ].join('');
+}
+
+function renderDueDateCard(title, items) {
+  const total = items.reduce((s, i) => s + Number(i.amount), 0);
+  const itemsHtml = items.length
+    ? items.map(i => `<div class="dd-item"><span class="name">${i.name}</span><span>${fmt(i.amount)}</span></div>`).join('')
+    : `<div class="dd-empty">Nothing due on this date.</div>`;
+  return `<div class="due-date-card">
+    <div class="dd-header">
+      <span class="dd-title">${title}</span>
+      <span class="dd-total">${fmt(total)}</span>
+    </div>
+    <div class="dd-items">${itemsHtml}</div>
+  </div>`;
+}
+
+// ─── PAYABLE DETAIL MODAL (contract progress) ───────────
+function openDetailModal(id) {
+  const p = payables.find(x => x.id === id);
+  if (!p) return;
+
+  const totalPaid = (p.paidHistory || []).reduce((s, h) => s + Number(h.amount), 0);
+  const monthsPaid = (p.paidHistory || []).length;
+  const paysLeft = (p.paysLeft !== null && p.paysLeft !== undefined) ? p.paysLeft : null;
+  const totalPays = paysLeft !== null ? monthsPaid + paysLeft : null;
+  const progressPct = totalPays ? Math.min(100, Math.round((monthsPaid / totalPays) * 100)) : 0;
+
+  let remainingBalance = calcRemainingBalance(paysLeft, p.amount);
+
+  const startLabel = p.startDate
+    ? new Date(p.startDate).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })
+    : '—';
+  const endLabel = p.endDate
+    ? new Date(p.endDate).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })
+    : '—';
+
+  document.getElementById('detail-title').textContent = p.name;
+  document.getElementById('detail-body').innerHTML = `
+    <p class="field-hint" style="margin-bottom:14px;">Contract started <strong>${startLabel}</strong>${p.endDate ? ` · ends <strong>${endLabel}</strong>` : ''}</p>
+
+    ${totalPays ? `
+    <div class="progress-bar-wrap">
+      <div class="progress-bar-label">
+        <span>${monthsPaid} of ${totalPays} payments made</span>
+        <span>${progressPct}%</span>
+      </div>
+      <div class="progress-bar-track">
+        <div class="progress-bar-fill" style="width:${progressPct}%;"></div>
+      </div>
+    </div>` : ''}
+
+    <div class="detail-grid">
+      <div class="detail-stat">
+        <div class="d-label">Months / Pays Paid</div>
+        <div class="d-value">${monthsPaid}</div>
+      </div>
+      <div class="detail-stat">
+        <div class="d-label">Pays Remaining</div>
+        <div class="d-value">${paysLeft !== null ? paysLeft : '—'}</div>
+      </div>
+      <div class="detail-stat">
+        <div class="d-label">Total Paid</div>
+        <div class="d-value">${fmt(totalPaid)}</div>
+      </div>
+      <div class="detail-stat">
+        <div class="d-label">Remaining Balance</div>
+        <div class="d-value">${remainingBalance !== null ? fmt(remainingBalance) : '—'}</div>
+      </div>
+    </div>
+  `;
+  document.getElementById('detail-modal').classList.add('open');
+}
+function closeDetailModal() {
+  document.getElementById('detail-modal').classList.remove('open');
+}
+
 // ─── ACTIONS ────────────────────────────────────────────
 function setFilter(f, el) {
   currentFilter = f;
@@ -792,6 +1037,9 @@ function markPaid(id) {
   const p = payables.find(x => x.id === id);
   if (!p) return;
   p.paid = true; p.paidAt = today();
+  if (!p.paidHistory) p.paidHistory = [];
+  p.paidHistory.push({ date: p.paidAt, amount: p.amount });
+  if (!p.groupId) p.groupId = p.id; // tag the original as the group root
 
   if (p.recurrence !== 'none') {
     const nextDue = getNextDueDate(p);
@@ -803,9 +1051,11 @@ function markPaid(id) {
       payables.push({
         ...p,
         id: Date.now() + '-' + Math.random(),
+        groupId: p.groupId,
         due: nextDue,
         secondDue: p.recurrence === 'twice-monthly' ? getNextSecondDue(p) : p.secondDue,
         paysLeft: paysLeftAfter,
+        paidHistory: p.paidHistory, // carry the shared history forward
         paid: false,
         paidAt: null
       });
@@ -845,7 +1095,10 @@ function getNextSecondDue(p) {
 }
 function markUnpaid(id) {
   const p = payables.find(x => x.id === id);
-  if (p) { p.paid = false; p.paidAt = null; }
+  if (p) {
+    p.paid = false; p.paidAt = null;
+    if (p.paidHistory && p.paidHistory.length) p.paidHistory.pop();
+  }
   save(); render();
 }
 function deletePayable(id) {
@@ -859,36 +1112,75 @@ function openModal() {
   document.getElementById('modal').classList.add('open');
   document.getElementById('f-due').value = today();
   document.getElementById('f-recurrence').value = 'none';
+  document.getElementById('f-start-date').value = '';
   document.getElementById('f-end-date').value = '';
+  document.getElementById('f-total-months').value = '';
   document.getElementById('f-pays-left').value = '';
   document.getElementById('f-second-due').value = '';
+  document.getElementById('pays-left-preview').textContent = '';
   toggleRecurrenceFields();
 }
 function toggleRecurrenceFields() {
   const rec = document.getElementById('f-recurrence').value;
   document.getElementById('f-second-due-wrap').style.display = (rec === 'twice-monthly') ? 'block' : 'none';
   document.getElementById('f-contract-wrap').style.display = (rec === 'none') ? 'none' : 'block';
+  document.getElementById('f-payslef-wrap').style.display = (rec === 'none') ? 'none' : 'block';
 }
 function paysPerYear(recurrence) {
   return { monthly: 12, 'twice-monthly': 24, quarterly: 4, annually: 1 }[recurrence] || 0;
 }
-function calcPaysLeft(dueStr, endStr, recurrence) {
-  if (!endStr || recurrence === 'none') return null;
+// How many pays have already happened, counting from contract start up to (and including) the given due date
+function calcPaysElapsedFromStart(startStr, dueStr, recurrence) {
+  if (!startStr) return 0;
+  const start = new Date(startStr);
   const due = new Date(dueStr);
-  const end = new Date(endStr);
-  if (end <= due) return 0;
+  if (due <= start) return 0;
   const perYear = paysPerYear(recurrence);
-  if (!perYear) return null;
+  if (!perYear) return 0;
   const msPerPay = (365.25 * 86400000) / perYear;
-  const remaining = Math.max(0, Math.round((end - due) / msPerPay));
-  return remaining;
+  return Math.max(0, Math.round((due - start) / msPerPay)) + 1; // +1 to count the due date's own pay
+}
+// Remaining pays = totalMonths - paysElapsed, OR derived from an end date if no total given
+function calcPaysLeft(startStr, dueStr, endStr, totalMonths, recurrence) {
+  if (recurrence === 'none') return null;
+
+  if (totalMonths && totalMonths > 0) {
+    const elapsed = calcPaysElapsedFromStart(startStr, dueStr, recurrence);
+    return Math.max(0, totalMonths - elapsed);
+  }
+  if (endStr) {
+    const due = new Date(dueStr);
+    const end = new Date(endStr);
+    if (end <= due) return 0;
+    const perYear = paysPerYear(recurrence);
+    if (!perYear) return null;
+    const msPerPay = (365.25 * 86400000) / perYear;
+    return Math.max(0, Math.round((end - due) / msPerPay));
+  }
+  return null;
+}
+function calcRemainingBalance(paysLeft, amount) {
+  if (paysLeft === null || paysLeft === undefined) return null;
+  return paysLeft * Number(amount);
 }
 function recalcPaysLeftPreview() {
   const due = document.getElementById('f-due').value;
+  const start = document.getElementById('f-start-date').value;
   const end = document.getElementById('f-end-date').value;
+  const totalMonths = parseInt(document.getElementById('f-total-months').value, 10) || null;
   const rec = document.getElementById('f-recurrence').value;
-  const left = calcPaysLeft(due, end, rec);
-  if (left !== null) document.getElementById('f-pays-left').placeholder = `auto: ${left} left`;
+  const amount = parseFloat(document.getElementById('f-amount').value) || 0;
+
+  const left = calcPaysLeft(start, due, end, totalMonths, rec);
+  const preview = document.getElementById('pays-left-preview');
+  if (left !== null) {
+    document.getElementById('f-pays-left').placeholder = `auto: ${left} left`;
+    const balance = calcRemainingBalance(left, amount);
+    preview.textContent = `Estimated: ${left} payment${left !== 1 ? 's' : ''} remaining ≈ ${fmt(balance)} balance left.`;
+  } else {
+    document.getElementById('f-pays-left').placeholder = 'auto-calculated';
+    preview.textContent = '';
+  }
 }
 function closeModal() {
   document.getElementById('modal').classList.remove('open');
@@ -899,8 +1191,10 @@ function addPayable() {
   const due = document.getElementById('f-due').value;
   const category = document.getElementById('f-category').value;
   const recurrence = document.getElementById('f-recurrence').value;
-  const endDate = document.getElementById('f-end-date').value || null;
+  const startDate = document.getElementById('f-start-date').value || null;
+  let endDate = document.getElementById('f-end-date').value || null;
   const secondDue = document.getElementById('f-second-due').value || null;
+  const totalMonths = parseInt(document.getElementById('f-total-months').value, 10) || null;
   const paysLeftOverride = document.getElementById('f-pays-left').value;
 
   if (!name || isNaN(amount) || !due) {
@@ -914,12 +1208,24 @@ function addPayable() {
 
   const paysLeft = paysLeftOverride !== ''
     ? parseInt(paysLeftOverride, 10)
-    : calcPaysLeft(due, endDate, recurrence);
+    : calcPaysLeft(startDate, due, endDate, totalMonths, recurrence);
+
+  // If a total term was given but no explicit end date, derive an end date for display purposes
+  if (!endDate && startDate && totalMonths && recurrence !== 'none') {
+    const perYear = paysPerYear(recurrence);
+    if (perYear) {
+      const msPerPay = (365.25 * 86400000) / perYear;
+      const start = new Date(startDate);
+      const end = new Date(start.getTime() + msPerPay * totalMonths);
+      endDate = end.toISOString().split('T')[0];
+    }
+  }
 
   payables.push({
     id: Date.now() + '-' + Math.random(),
     name, amount, due, category, recurrence,
-    endDate, secondDue, paysLeft,
+    startDate, endDate, secondDue, totalMonths, paysLeft,
+    paidHistory: [], // tracks each payment made: { date, amount }
     paid: false, paidAt: null
   });
   save(); render(); closeModal();
@@ -930,6 +1236,9 @@ function addPayable() {
 // Close modal on overlay click
 document.getElementById('modal').addEventListener('click', function(e) {
   if (e.target === this) closeModal();
+});
+document.getElementById('detail-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeDetailModal();
 });
 
 // ─── NOTIFICATIONS ──────────────────────────────────────
@@ -999,9 +1308,15 @@ function maybeSeedSamples() {
     const now = new Date();
     const m = now.getMonth(), y = now.getFullYear();
     payables = [
-      { id: 's1', name: 'Meralco Electric Bill', amount: 2850, due: new Date(y, m, 5).toISOString().split('T')[0], category: '💡 Utilities', recurrence: 'monthly', endDate: null, secondDue: null, paysLeft: null, paid: false, paidAt: null },
-      { id: 's2', name: 'Converge Internet', amount: 1599, due: new Date(y, m, 15).toISOString().split('T')[0], category: '🌐 Internet', recurrence: 'monthly', endDate: null, secondDue: null, paysLeft: null, paid: false, paidAt: null },
-      { id: 's3', name: 'BDO Credit Card', amount: 12500, due: new Date(y, m, 20).toISOString().split('T')[0], category: '💳 Credit Card', recurrence: 'monthly', endDate: null, secondDue: null, paysLeft: null, paid: false, paidAt: null },
+      { id: 's1', groupId: 's1', name: 'Meralco Electric Bill', amount: 2850, due: new Date(y, m, 5).toISOString().split('T')[0], category: '💡 Utilities', recurrence: 'monthly', startDate: null, endDate: null, secondDue: null, paysLeft: null, paidHistory: [], paid: false, paidAt: null },
+      { id: 's2', groupId: 's2', name: 'Converge Internet', amount: 1599, due: new Date(y, m, 15).toISOString().split('T')[0], category: '🌐 Internet', recurrence: 'monthly', startDate: null, endDate: null, secondDue: null, paysLeft: null, paidHistory: [], paid: false, paidAt: null },
+      { id: 's3', groupId: 's3', name: 'BDO Credit Card', amount: 12500, due: new Date(y, m, 20).toISOString().split('T')[0], category: '💳 Credit Card', recurrence: 'monthly', startDate: null, endDate: null, secondDue: null, paysLeft: null, paidHistory: [], paid: false, paidAt: null },
+      { id: 's4', groupId: 's4', name: 'Motorcycle Loan', amount: 4200, due: new Date(y, m, 5).toISOString().split('T')[0], category: '🏦 Loan', recurrence: 'monthly',
+        startDate: new Date(y, m - 6, 5).toISOString().split('T')[0],
+        endDate: new Date(y, m + 18, 5).toISOString().split('T')[0],
+        secondDue: null, totalMonths: 24, paysLeft: 18,
+        paidHistory: Array.from({length: 6}, (_, i) => ({ date: new Date(y, m - 6 + i, 5).toISOString().split('T')[0], amount: 4200 })),
+        paid: false, paidAt: null },
     ];
     save();
   }
