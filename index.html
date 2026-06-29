@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>PayTrack — Your Payables Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #F7F6F2;
+      --card: #FFFFFF;
+      --ink: #1A1A1A;
+      --muted: #6B6B6B;
+      --accent: #2563EB;
+      --accent-light: #EFF6FF;
+      --danger: #DC2626;
+      --danger-light: #FEF2F2;
+      --warn: #D97706;
+      --warn-light: #FFFBEB;
+      --success: #16A34A;
+      --success-light: #F0FDF4;
+      --border: #E5E4DF;
+      --radius: 14px;
+      --shadow: 0 2px 12px rgba(0,0,0,0.07);
+    }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      min-height: 100vh;
+      padding: 0 0 80px;
+    }
+
+    /* HEADER */
+    header {
+      background: var(--ink);
+      color: white;
+      padding: 20px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .logo {
+      font-family: 'DM Serif Display', serif;
+      font-size: 1.5rem;
+      letter-spacing: -0.5px;
+    }
+    .logo span { color: #60A5FA; }
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    #notif-status {
+      font-size: 0.78rem;
+      background: rgba(255,255,255,0.1);
+      border-radius: 20px;
+      padding: 5px 12px;
+      color: #d1d5db;
+    }
+    #notif-status.granted { color: #86efac; }
+
+    /* MAIN LAYOUT */
+    main {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 32px 20px 0;
+    }
+
+    /* SUMMARY CARDS */
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+    .summary-card {
+      background: var(--card);
+      border-radius: var(--radius);
+      padding: 20px 22px;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+    }
+    .summary-card .label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+    .summary-card .value {
+      font-family: 'DM Serif Display', serif;
+      font-size: 1.9rem;
+      line-height: 1;
+    }
+    .summary-card.total .value { color: var(--ink); }
+    .summary-card.overdue .value { color: var(--danger); }
+    .summary-card.upcoming .value { color: var(--warn); }
+
+    /* NEXT DUE BANNER */
+    #next-due-banner {
+      background: linear-gradient(135deg, #1D4ED8, #2563EB);
+      color: white;
+      border-radius: var(--radius);
+      padding: 16px 22px;
+      margin-bottom: 24px;
+      font-size: 0.9rem;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    #next-due-banner .icon { font-size: 1.3rem; }
+
+    /* SECTION HEADER */
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .section-header h2 {
+      font-family: 'DM Serif Display', serif;
+      font-size: 1.3rem;
+    }
+
+    /* ADD BUTTON */
+    .btn-add {
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      padding: 9px 18px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: background 0.15s, transform 0.1s;
+    }
+    .btn-add:hover { background: #1D4ED8; transform: translateY(-1px); }
+
+    /* PAYABLES LIST */
+    #payables-list { display: flex; flex-direction: column; gap: 12px; }
+
+    .payable-card {
+      background: var(--card);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      transition: box-shadow 0.15s;
+    }
+    .payable-card:hover { box-shadow: 0 4px 18px rgba(0,0,0,0.10); }
+
+    .payable-card.overdue { border-left: 4px solid var(--danger); background: var(--danger-light); }
+    .payable-card.upcoming { border-left: 4px solid var(--warn); background: var(--warn-light); }
+    .payable-card.paid { border-left: 4px solid var(--success); opacity: 0.7; }
+
+    .payable-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 10px;
+      background: var(--accent-light);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.3rem;
+      flex-shrink: 0;
+    }
+    .payable-info { flex: 1; min-width: 0; }
+    .payable-name {
+      font-weight: 600;
+      font-size: 0.97rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .payable-meta {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+    .payable-amount {
+      font-family: 'DM Serif Display', serif;
+      font-size: 1.25rem;
+      text-align: right;
+      flex-shrink: 0;
+    }
+    .payable-status {
+      font-size: 0.72rem;
+      font-weight: 600;
+      border-radius: 20px;
+      padding: 3px 10px;
+      text-align: center;
+      flex-shrink: 0;
+      min-width: 72px;
+    }
+    .status-overdue { background: var(--danger); color: white; }
+    .status-upcoming { background: var(--warn); color: white; }
+    .status-ok { background: var(--success-light); color: var(--success); border: 1px solid #bbf7d0; }
+    .status-paid { background: #f3f4f6; color: #6b7280; }
+
+    .payable-actions {
+      display: flex;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .btn-action {
+      border: 1px solid var(--border);
+      background: white;
+      border-radius: 8px;
+      padding: 5px 10px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: background 0.12s;
+      font-family: 'DM Sans', sans-serif;
+    }
+    .btn-action:hover { background: var(--bg); }
+    .btn-pay { color: var(--success); border-color: #bbf7d0; }
+    .btn-pay:hover { background: var(--success-light); }
+    .btn-delete { color: var(--danger); border-color: #fecaca; }
+    .btn-delete:hover { background: var(--danger-light); }
+
+    /* EMPTY STATE */
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--muted);
+    }
+    .empty-state .icon { font-size: 3rem; margin-bottom: 14px; }
+    .empty-state p { font-size: 0.95rem; }
+
+    /* MODAL */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      backdrop-filter: blur(3px);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: white;
+      border-radius: 18px;
+      padding: 30px;
+      width: 100%;
+      max-width: 440px;
+      margin: 20px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+    }
+    .modal h3 {
+      font-family: 'DM Serif Display', serif;
+      font-size: 1.35rem;
+      margin-bottom: 20px;
+    }
+    .form-group { margin-bottom: 16px; }
+    .form-group label {
+      display: block;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 6px;
+    }
+    .form-group input,
+    .form-group select {
+      width: 100%;
+      padding: 10px 13px;
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.95rem;
+      outline: none;
+      background: var(--bg);
+      color: var(--ink);
+      transition: border-color 0.15s;
+    }
+    .form-group input:focus,
+    .form-group select:focus { border-color: var(--accent); }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 22px;
+    }
+    .btn-submit {
+      flex: 1;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      padding: 11px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.93rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-submit:hover { background: #1D4ED8; }
+    .btn-cancel {
+      flex: 1;
+      background: var(--bg);
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 11px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.93rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    /* NOTIFICATION BANNER */
+    #notif-banner {
+      background: #FEF9C3;
+      border: 1px solid #FDE68A;
+      border-radius: var(--radius);
+      padding: 14px 18px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 0.88rem;
+    }
+    #notif-banner.hidden { display: none; }
+    .btn-enable-notif {
+      background: #CA8A04;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 7px 14px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      font-family: 'DM Sans', sans-serif;
+    }
+
+    /* DEPLOY GUIDE */
+    .deploy-section {
+      margin-top: 48px;
+      background: var(--card);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      padding: 28px;
+      box-shadow: var(--shadow);
+    }
+    .deploy-section h2 {
+      font-family: 'DM Serif Display', serif;
+      font-size: 1.3rem;
+      margin-bottom: 6px;
+    }
+    .deploy-section .subtitle {
+      color: var(--muted);
+      font-size: 0.88rem;
+      margin-bottom: 24px;
+    }
+    .deploy-steps { display: flex; flex-direction: column; gap: 16px; }
+    .deploy-step {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+    }
+    .step-num {
+      background: var(--accent);
+      color: white;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 0.85rem;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .step-body strong { display: block; font-size: 0.95rem; margin-bottom: 4px; }
+    .step-body p { font-size: 0.85rem; color: var(--muted); line-height: 1.5; }
+    .step-body code {
+      background: #F1F5F9;
+      padding: 2px 7px;
+      border-radius: 5px;
+      font-size: 0.82rem;
+      font-family: monospace;
+      color: #0F172A;
+    }
+    .step-body a { color: var(--accent); text-decoration: none; }
+    .step-body a:hover { text-decoration: underline; }
+
+    /* FILTER TABS */
+    .filter-tabs {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .tab {
+      padding: 6px 14px;
+      border-radius: 20px;
+      border: 1.5px solid var(--border);
+      background: white;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      color: var(--muted);
+      font-family: 'DM Sans', sans-serif;
+      transition: all 0.12s;
+    }
+    .tab.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: white;
+    }
+
+    @media (max-width: 600px) {
+      .summary-grid { grid-template-columns: 1fr; }
+      .form-row { grid-template-columns: 1fr; }
+      header { padding: 14px 16px; }
+      main { padding: 20px 14px 0; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Pay<span>Track</span></div>
+  <div class="header-right">
+    <span id="notif-status">🔔 Notifications off</span>
+  </div>
+</header>
+
+<main>
+
+  <!-- Notification permission banner -->
+  <div id="notif-banner">
+    <span>📣 Enable notifications to get reminders on the <strong>5th and 20th</strong> of every month.</span>
+    <button class="btn-enable-notif" onclick="requestNotifPermission()">Enable Notifications</button>
+  </div>
+
+  <!-- Summary cards -->
+  <div class="summary-grid">
+    <div class="summary-card total">
+      <div class="label">Total Balance</div>
+      <div class="value" id="total-balance">₱0</div>
+    </div>
+    <div class="summary-card overdue">
+      <div class="label">Overdue</div>
+      <div class="value" id="total-overdue">₱0</div>
+    </div>
+    <div class="summary-card upcoming">
+      <div class="label">Due This Month</div>
+      <div class="value" id="total-upcoming">₱0</div>
+    </div>
+  </div>
+
+  <!-- Next payment banner -->
+  <div id="next-due-banner">
+    <span class="icon">📅</span>
+    <span id="next-due-text">Loading next payment date...</span>
+  </div>
+
+  <!-- Filter + Add -->
+  <div class="section-header">
+    <h2>Payables</h2>
+    <button class="btn-add" onclick="openModal()">＋ Add Payable</button>
+  </div>
+
+  <div class="filter-tabs">
+    <button class="tab active" onclick="setFilter('all', this)">All</button>
+    <button class="tab" onclick="setFilter('overdue', this)">Overdue</button>
+    <button class="tab" onclick="setFilter('upcoming', this)">Upcoming</button>
+    <button class="tab" onclick="setFilter('ok', this)">On Track</button>
+    <button class="tab" onclick="setFilter('paid', this)">Paid</button>
+  </div>
+
+  <div id="payables-list"></div>
+
+  <!-- Deploy Guide -->
+  <div class="deploy-section">
+    <h2>🚀 Publish This Site for Free</h2>
+    <p class="subtitle">Step-by-step guide to host this tracker online — accessible from any device, forever free.</p>
+    <div class="deploy-steps">
+
+      <div class="deploy-step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <strong>Save this file to your computer</strong>
+          <p>Right-click this page in your browser → <code>Save As</code> → save as <code>index.html</code>. Or download from Claude's output. Keep all your data — it's saved in your browser's localStorage.</p>
+        </div>
+      </div>
+
+      <div class="deploy-step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <strong>Create a free GitHub account</strong>
+          <p>Go to <a href="https://github.com" target="_blank">github.com</a> → click <strong>Sign up</strong> → complete registration. It's completely free.</p>
+        </div>
+      </div>
+
+      <div class="deploy-step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <strong>Create a new repository</strong>
+          <p>After logging in, click the <strong>＋</strong> icon at the top right → <strong>New repository</strong>. Name it <code>paytrack</code>. Set it to <strong>Public</strong>. Click <strong>Create repository</strong>.</p>
+        </div>
+      </div>
+
+      <div class="deploy-step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <strong>Upload your index.html</strong>
+          <p>In your new repo, click <strong>Add file → Upload files</strong>. Drag your <code>index.html</code> file into the box. Scroll down and click <strong>Commit changes</strong>.</p>
+        </div>
+      </div>
+
+      <div class="deploy-step">
+        <div class="step-num">5</div>
+        <div class="step-body">
+          <strong>Enable GitHub Pages</strong>
+          <p>Go to your repo → click <strong>Settings</strong> (top nav) → scroll to <strong>Pages</strong> in the left sidebar. Under <em>Source</em>, select <strong>Deploy from a branch</strong>. Choose <code>main</code> branch and <code>/ (root)</code>. Click <strong>Save</strong>.</p>
+        </div>
+      </div>
+
+      <div class="deploy-step">
+        <div class="step-num">6</div>
+        <div class="step-body">
+          <strong>Your site is live! 🎉</strong>
+          <p>After 1–2 minutes, your tracker will be available at: <code>https://[your-username].github.io/paytrack</code>. Bookmark it on your phone and desktop. Data is stored in your browser — no login needed.</p>
+        </div>
+      </div>
+
+      <div class="deploy-step">
+        <div class="step-num">⚠️</div>
+        <div class="step-body">
+          <strong>Important: notifications work per device</strong>
+          <p>Because this is a browser-based app, you'll need to click "Enable Notifications" once on <em>each device</em> you use. Notifications are scheduled locally in your browser — they don't rely on any external server.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</main>
+
+<!-- ADD PAYABLE MODAL -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <h3>Add a Payable</h3>
+    <div class="form-group">
+      <label>Name / Description</label>
+      <input type="text" id="f-name" placeholder="e.g. Meralco bill, Credit Card, Loan"/>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Amount (₱)</label>
+        <input type="number" id="f-amount" placeholder="0.00" min="0" step="0.01"/>
+      </div>
+      <div class="form-group">
+        <label>Category</label>
+        <select id="f-category">
+          <option value="💡 Utilities">💡 Utilities</option>
+          <option value="🏦 Loan">🏦 Loan</option>
+          <option value="💳 Credit Card">💳 Credit Card</option>
+          <option value="🏠 Rent">🏠 Rent</option>
+          <option value="📱 Subscriptions">📱 Subscriptions</option>
+          <option value="🌐 Internet">🌐 Internet</option>
+          <option value="🏥 Insurance">🏥 Insurance</option>
+          <option value="📦 Other">📦 Other</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Due Date</label>
+        <input type="date" id="f-due"/>
+      </div>
+      <div class="form-group">
+        <label>Recurrence</label>
+        <select id="f-recurrence">
+          <option value="none">One-time</option>
+          <option value="monthly">Monthly</option>
+          <option value="quarterly">Quarterly</option>
+          <option value="annually">Annually</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+      <button class="btn-submit" onclick="addPayable()">Add Payable</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── DATA ───────────────────────────────────────────────
+const STORAGE_KEY = 'paytrack_payables_v1';
+let payables = [];
+let currentFilter = 'all';
+
+function load() {
+  try {
+    payables = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+  } catch { payables = []; }
+}
+function save() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(payables));
+}
+
+// ─── DATES ──────────────────────────────────────────────
+function today() {
+  return new Date().toISOString().split('T')[0];
+}
+function getDaysUntil(dateStr) {
+  const d = new Date(dateStr);
+  const now = new Date(); now.setHours(0,0,0,0);
+  return Math.round((d - now) / 86400000);
+}
+function getStatus(p) {
+  if (p.paid) return 'paid';
+  const days = getDaysUntil(p.due);
+  if (days < 0) return 'overdue';
+  if (days <= 7) return 'upcoming';
+  return 'ok';
+}
+function fmt(n) {
+  return '₱' + Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// ─── RENDER ─────────────────────────────────────────────
+function render() {
+  updateSummary();
+  updateNextDue();
+
+  const list = document.getElementById('payables-list');
+  const filtered = payables.filter(p => {
+    if (currentFilter === 'all') return true;
+    return getStatus(p) === currentFilter;
+  });
+
+  if (filtered.length === 0) {
+    list.innerHTML = `<div class="empty-state">
+      <div class="icon">📋</div>
+      <p>No payables here. Click <strong>+ Add Payable</strong> to get started.</p>
+    </div>`;
+    return;
+  }
+
+  // Sort: overdue first, then upcoming, then ok, then paid
+  const order = { overdue: 0, upcoming: 1, ok: 2, paid: 3 };
+  filtered.sort((a, b) => {
+    const sa = order[getStatus(a)], sb = order[getStatus(b)];
+    if (sa !== sb) return sa - sb;
+    return new Date(a.due) - new Date(b.due);
+  });
+
+  list.innerHTML = filtered.map(p => {
+    const status = getStatus(p);
+    const days = getDaysUntil(p.due);
+    let daysLabel = '';
+    if (!p.paid) {
+      if (days < 0) daysLabel = `${Math.abs(days)}d overdue`;
+      else if (days === 0) daysLabel = 'Due today';
+      else daysLabel = `Due in ${days}d`;
+    } else {
+      daysLabel = 'Paid ✓';
+    }
+    const statusLabel = { overdue: 'OVERDUE', upcoming: 'UPCOMING', ok: 'ON TRACK', paid: 'PAID' }[status];
+    const statusClass = `status-${status}`;
+    const cardClass = { overdue: 'overdue', upcoming: 'upcoming', ok: '', paid: 'paid' }[status];
+    const emoji = p.category.split(' ')[0];
+
+    return `<div class="payable-card ${cardClass}" data-id="${p.id}">
+      <div class="payable-icon">${emoji}</div>
+      <div class="payable-info">
+        <div class="payable-name">${p.name}</div>
+        <div class="payable-meta">${p.category.replace(emoji, '').trim()} · ${daysLabel} · ${p.recurrence !== 'none' ? p.recurrence : 'one-time'}</div>
+      </div>
+      <div class="payable-amount">${fmt(p.amount)}</div>
+      <div class="payable-status ${statusClass}">${statusLabel}</div>
+      <div class="payable-actions">
+        ${!p.paid ? `<button class="btn-action btn-pay" onclick="markPaid('${p.id}')">✓ Pay</button>` : `<button class="btn-action" onclick="markUnpaid('${p.id}')">↩ Unpay</button>`}
+        <button class="btn-action btn-delete" onclick="deletePayable('${p.id}')">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function updateSummary() {
+  const unpaid = payables.filter(p => !p.paid);
+  const total = unpaid.reduce((s, p) => s + Number(p.amount), 0);
+  const overdue = unpaid.filter(p => getDaysUntil(p.due) < 0).reduce((s, p) => s + Number(p.amount), 0);
+  const now = new Date();
+  const upcoming = unpaid.filter(p => {
+    const d = new Date(p.due);
+    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  }).reduce((s, p) => s + Number(p.amount), 0);
+
+  document.getElementById('total-balance').textContent = fmt(total);
+  document.getElementById('total-overdue').textContent = fmt(overdue);
+  document.getElementById('total-upcoming').textContent = fmt(upcoming);
+}
+
+function updateNextDue() {
+  const now = new Date();
+  const day = now.getDate();
+  const month = now.getMonth();
+  const year = now.getFullYear();
+
+  let next5 = new Date(year, month, 5);
+  let next20 = new Date(year, month, 20);
+  if (next5 <= now) next5 = new Date(year, month + 1, 5);
+  if (next20 <= now) next20 = new Date(year, month + 1, 20);
+
+  const nextDate = next5 < next20 ? next5 : next20;
+  const daysUntil = Math.round((nextDate - now) / 86400000);
+  const dateStr = nextDate.toLocaleDateString('en-PH', { month: 'long', day: 'numeric' });
+
+  document.getElementById('next-due-text').textContent =
+    `Next notification reminder: ${dateStr} (in ${daysUntil} day${daysUntil !== 1 ? 's' : ''}) — the 5th and 20th of every month`;
+}
+
+// ─── ACTIONS ────────────────────────────────────────────
+function setFilter(f, el) {
+  currentFilter = f;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  render();
+}
+
+function markPaid(id) {
+  const p = payables.find(x => x.id === id);
+  if (p) { p.paid = true; p.paidAt = today(); }
+  if (p && p.recurrence !== 'none') {
+    const months = { monthly: 1, quarterly: 3, annually: 12 }[p.recurrence] || 1;
+    const d = new Date(p.due);
+    d.setMonth(d.getMonth() + months);
+    payables.push({
+      ...p,
+      id: Date.now() + '-' + Math.random(),
+      due: d.toISOString().split('T')[0],
+      paid: false,
+      paidAt: null
+    });
+  }
+  save(); render();
+}
+function markUnpaid(id) {
+  const p = payables.find(x => x.id === id);
+  if (p) { p.paid = false; p.paidAt = null; }
+  save(); render();
+}
+function deletePayable(id) {
+  if (!confirm('Delete this payable?')) return;
+  payables = payables.filter(x => x.id !== id);
+  save(); render();
+}
+
+// ─── MODAL ──────────────────────────────────────────────
+function openModal() {
+  document.getElementById('modal').classList.add('open');
+  document.getElementById('f-due').value = today();
+}
+function closeModal() {
+  document.getElementById('modal').classList.remove('open');
+}
+function addPayable() {
+  const name = document.getElementById('f-name').value.trim();
+  const amount = parseFloat(document.getElementById('f-amount').value);
+  const due = document.getElementById('f-due').value;
+  const category = document.getElementById('f-category').value;
+  const recurrence = document.getElementById('f-recurrence').value;
+
+  if (!name || isNaN(amount) || !due) {
+    alert('Please fill in name, amount, and due date.');
+    return;
+  }
+  payables.push({
+    id: Date.now() + '-' + Math.random(),
+    name, amount, due, category, recurrence,
+    paid: false, paidAt: null
+  });
+  save(); render(); closeModal();
+  document.getElementById('f-name').value = '';
+  document.getElementById('f-amount').value = '';
+}
+
+// Close modal on overlay click
+document.getElementById('modal').addEventListener('click', function(e) {
+  if (e.target === this) closeModal();
+});
+
+// ─── NOTIFICATIONS ──────────────────────────────────────
+function checkNotifBanner() {
+  if (!('Notification' in window)) {
+    document.getElementById('notif-banner').classList.add('hidden');
+    return;
+  }
+  if (Notification.permission === 'granted') {
+    document.getElementById('notif-banner').classList.add('hidden');
+    document.getElementById('notif-status').textContent = '🔔 Notifications on';
+    document.getElementById('notif-status').classList.add('granted');
+    scheduleNotifications();
+  }
+}
+
+function requestNotifPermission() {
+  if (!('Notification' in window)) {
+    alert('Your browser does not support notifications.');
+    return;
+  }
+  Notification.requestPermission().then(perm => {
+    if (perm === 'granted') {
+      document.getElementById('notif-banner').classList.add('hidden');
+      document.getElementById('notif-status').textContent = '🔔 Notifications on';
+      document.getElementById('notif-status').classList.add('granted');
+      scheduleNotifications();
+      new Notification('PayTrack 🎉', {
+        body: "You'll get reminders on the 5th and 20th of every month!",
+        icon: 'https://cdn.jsdelivr.net/npm/twemoji@14/assets/72x72/1f4b0.png'
+      });
+    }
+  });
+}
+
+function scheduleNotifications() {
+  // Check if today is the 5th or 20th and fire a notification
+  const day = new Date().getDate();
+  if (day === 5 || day === 20) {
+    const unpaid = payables.filter(p => !p.paid);
+    const total = unpaid.reduce((s, p) => s + Number(p.amount), 0);
+    if (unpaid.length > 0 && Notification.permission === 'granted') {
+      new Notification('💸 PayTrack Reminder', {
+        body: `You have ${unpaid.length} unpaid item${unpaid.length !== 1 ? 's' : ''} totaling ${fmt(total)}. Time to settle up!`,
+        icon: 'https://cdn.jsdelivr.net/npm/twemoji@14/assets/72x72/1f4b0.png'
+      });
+    }
+  }
+
+  // Store last check date and schedule next check at midnight
+  const lastCheck = localStorage.getItem('paytrack_last_check');
+  const todayStr = today();
+  if (lastCheck !== todayStr) {
+    localStorage.setItem('paytrack_last_check', todayStr);
+  }
+
+  // Re-check at next midnight
+  const now = new Date();
+  const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  const msUntilMidnight = midnight - now;
+  setTimeout(() => scheduleNotifications(), msUntilMidnight);
+}
+
+// ─── SEED SAMPLE DATA if first run ──────────────────────
+function maybeSeedSamples() {
+  if (payables.length === 0) {
+    const now = new Date();
+    const m = now.getMonth(), y = now.getFullYear();
+    payables = [
+      { id: 's1', name: 'Meralco Electric Bill', amount: 2850, due: new Date(y, m, 5).toISOString().split('T')[0], category: '💡 Utilities', recurrence: 'monthly', paid: false, paidAt: null },
+      { id: 's2', name: 'Converge Internet', amount: 1599, due: new Date(y, m, 15).toISOString().split('T')[0], category: '🌐 Internet', recurrence: 'monthly', paid: false, paidAt: null },
+      { id: 's3', name: 'BDO Credit Card', amount: 12500, due: new Date(y, m, 20).toISOString().split('T')[0], category: '💳 Credit Card', recurrence: 'monthly', paid: false, paidAt: null },
+    ];
+    save();
+  }
+}
+
+// ─── INIT ────────────────────────────────────────────────
+load();
+maybeSeedSamples();
+render();
+checkNotifBanner();
+</script>
+</body>
+</html>
