@@ -293,6 +293,46 @@
     .btn-pay:hover { background: var(--success-light); }
     .btn-delete { color: var(--danger); border-color: #fecaca; }
     .btn-delete:hover { background: var(--danger-light); }
+    .btn-edit { color: var(--accent); border-color: #bfdbfe; }
+    .btn-edit:hover { background: var(--accent-light); }
+
+    /* FLAT SECTIONS (Overdue / For Later) */
+    .flat-section {
+      background: var(--card);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      margin-bottom: 20px;
+    }
+    .flat-section.overdue-section { border-left: 4px solid var(--danger); }
+    .flat-section.later-section { border-left: 4px solid var(--accent); }
+    .fs-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .fs-title { font-family: 'DM Serif Display', serif; font-size: 1.05rem; }
+    .fs-total { font-family: 'DM Serif Display', serif; font-size: 1.3rem; }
+    .overdue-section .fs-total { color: var(--danger); }
+    .later-section .fs-total { color: var(--accent); }
+    .fs-items { display: flex; flex-direction: column; gap: 4px; }
+    .fs-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 0.85rem;
+      padding: 8px 0;
+      border-bottom: 1px dashed var(--border);
+    }
+    .fs-item:last-child { border-bottom: none; }
+    .fs-item .name { font-weight: 600; }
+    .fs-item .meta { color: var(--muted); font-size: 0.76rem; margin-top: 2px; }
+    .fs-item-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+    .fs-item-right .amt { font-family: 'DM Serif Display', serif; font-size: 1rem; }
+    .fs-empty { font-size: 0.85rem; color: var(--muted); font-style: italic; padding: 6px 0; }
 
     /* EMPTY STATE */
     .empty-state {
@@ -660,6 +700,12 @@
     <span id="next-due-text">Loading next payment date...</span>
   </div>
 
+  <!-- Overdue section -->
+  <div class="flat-section overdue-section" id="overdue-section"></div>
+
+  <!-- For Later section -->
+  <div class="flat-section later-section" id="later-section"></div>
+
   <!-- Due on 5th / 20th breakdown -->
   <div class="due-dates-grid" id="due-dates-grid"></div>
 
@@ -838,7 +884,8 @@
 <!-- ADD PAYABLE MODAL -->
 <div class="modal-overlay" id="modal">
   <div class="modal">
-    <h3>Add a Payable</h3>
+    <h3 id="modal-title">Add a Payable</h3>
+    <input type="hidden" id="f-edit-id" value=""/>
     <div class="form-group">
       <label>Name / Description</label>
       <input type="text" id="f-name" placeholder="e.g. Meralco bill, Credit Card, Loan"/>
@@ -909,9 +956,17 @@
       </div>
     </div>
 
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-weight:500;color:var(--ink);cursor:pointer;">
+        <input type="checkbox" id="f-for-later" style="width:auto;"/>
+        📌 Save for later (won't count toward totals or the 5th/20th breakdown)
+      </label>
+      <p class="field-hint">Use this for a payable you're planning but isn't an active obligation yet. It'll live in its own "For Later" list until you activate it.</p>
+    </div>
+
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal()">Cancel</button>
-      <button class="btn-submit" onclick="addPayable()">Add Payable</button>
+      <button class="btn-submit" id="modal-submit-btn" onclick="addPayable()">Add Payable</button>
     </div>
   </div>
 </div>
@@ -1205,9 +1260,12 @@ function render() {
   updateSummary();
   updateNextDue();
   updateDueDatesGrid();
+  renderOverdueSection();
+  renderLaterSection();
 
   const list = document.getElementById('payables-list');
   const filtered = payables.filter(p => {
+    if (p.forLater) return false;
     if (currentFilter === 'all') return true;
     return getStatus(p) === currentFilter;
   });
@@ -1272,6 +1330,7 @@ function render() {
       <div class="payable-status ${statusClass}">${statusLabel}</div>
       <div class="payable-actions">
         ${!p.paid ? `<button class="btn-action btn-pay" onclick="markPaid('${p.id}')">✓ Pay</button>` : `<button class="btn-action" onclick="markUnpaid('${p.id}')">↩ Unpay</button>`}
+        <button class="btn-action btn-edit" onclick="editPayable('${p.id}')">✎ Edit</button>
         <button class="btn-action btn-delete" onclick="deletePayable('${p.id}')">✕</button>
       </div>
     </div>`;
@@ -1279,7 +1338,7 @@ function render() {
 }
 
 function updateSummary() {
-  const unpaid = payables.filter(p => !p.paid);
+  const unpaid = payables.filter(p => !p.paid && !p.forLater);
   const total = unpaid.reduce((s, p) => s + Number(p.amount), 0);
   const overdue = unpaid.filter(p => getDaysUntil(p.due) < 0).reduce((s, p) => s + Number(p.amount), 0);
   const now = new Date();
@@ -1317,7 +1376,7 @@ function getDayOfMonth(dateStr) {
 }
 
 function updateDueDatesGrid() {
-  const unpaid = payables.filter(p => !p.paid);
+  const unpaid = payables.filter(p => !p.paid && !p.forLater);
 
   // A payable's "pay dates" are its due date, and secondDue if twice-monthly
   const due5 = [];
@@ -1354,6 +1413,81 @@ function renderDueDateCard(title, items) {
     </div>
     <div class="dd-items">${itemsHtml}</div>
   </div>`;
+}
+
+// ─── OVERDUE SECTION ────────────────────────────────────
+function renderOverdueSection() {
+  const overdueItems = payables.filter(p => !p.paid && !p.forLater && getStatus(p) === 'overdue');
+  const total = overdueItems.reduce((s, p) => s + Number(p.amount), 0);
+
+  overdueItems.sort((a, b) => new Date(a.due) - new Date(b.due));
+
+  const itemsHtml = overdueItems.length
+    ? overdueItems.map(p => {
+        const days = Math.abs(getDaysUntil(p.due));
+        const dueLabel = new Date(p.due).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' });
+        return `<div class="fs-item">
+          <div>
+            <div class="name">${p.name}</div>
+            <div class="meta">${p.category} · was due ${dueLabel} · ${days}d overdue</div>
+          </div>
+          <div class="fs-item-right">
+            <span class="amt">${fmt(p.amount)}</span>
+            <button class="btn-action btn-pay" onclick="markPaid('${p.id}')">✓ Pay</button>
+            <button class="btn-action btn-edit" onclick="editPayable('${p.id}')">✎</button>
+          </div>
+        </div>`;
+      }).join('')
+    : `<div class="fs-empty">Nothing overdue right now. You're all caught up 🎉</div>`;
+
+  document.getElementById('overdue-section').innerHTML = `
+    <div class="fs-header">
+      <span class="fs-title">🔴 Overdue</span>
+      <span class="fs-total">${fmt(total)}</span>
+    </div>
+    <div class="fs-items">${itemsHtml}</div>
+  `;
+}
+
+// ─── FOR LATER SECTION ──────────────────────────────────
+function renderLaterSection() {
+  const laterItems = payables.filter(p => !p.paid && p.forLater);
+  const total = laterItems.reduce((s, p) => s + Number(p.amount), 0);
+
+  laterItems.sort((a, b) => new Date(a.due) - new Date(b.due));
+
+  const itemsHtml = laterItems.length
+    ? laterItems.map(p => {
+        const dueLabel = new Date(p.due).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+        return `<div class="fs-item">
+          <div>
+            <div class="name">${p.name}</div>
+            <div class="meta">${p.category} · target date ${dueLabel}</div>
+          </div>
+          <div class="fs-item-right">
+            <span class="amt">${fmt(p.amount)}</span>
+            <button class="btn-action" onclick="activatePayable('${p.id}')">↗ Activate</button>
+            <button class="btn-action btn-edit" onclick="editPayable('${p.id}')">✎</button>
+            <button class="btn-action btn-delete" onclick="deletePayable('${p.id}')">✕</button>
+          </div>
+        </div>`;
+      }).join('')
+    : `<div class="fs-empty">No payables saved for later. Use "Save for later" when adding one to plan ahead without affecting your totals.</div>`;
+
+  document.getElementById('later-section').innerHTML = `
+    <div class="fs-header">
+      <span class="fs-title">📌 For Later</span>
+      <span class="fs-total">${fmt(total)}</span>
+    </div>
+    <div class="fs-items">${itemsHtml}</div>
+  `;
+}
+
+function activatePayable(id) {
+  const p = payables.find(x => x.id === id);
+  if (!p) return;
+  p.forLater = false;
+  save(); render();
 }
 
 // ─── PAYABLE DETAIL MODAL (contract progress) ───────────
@@ -1499,8 +1633,39 @@ function deletePayable(id) {
 }
 
 // ─── MODAL ──────────────────────────────────────────────
-function openModal() {
+function openModal(id) {
   document.getElementById('modal').classList.add('open');
+  document.getElementById('f-edit-id').value = id || '';
+  const titleEl = document.getElementById('modal-title');
+  const btnEl = document.getElementById('modal-submit-btn');
+
+  if (id) {
+    const p = payables.find(x => x.id === id);
+    if (p) {
+      titleEl.textContent = 'Edit Payable';
+      btnEl.textContent = 'Save Changes';
+      document.getElementById('f-name').value = p.name;
+      document.getElementById('f-amount').value = p.amount;
+      document.getElementById('f-category').value = p.category;
+      document.getElementById('f-due').value = p.due;
+      document.getElementById('f-recurrence').value = p.recurrence;
+      document.getElementById('f-start-date').value = p.startDate || '';
+      document.getElementById('f-end-date').value = p.endDate || '';
+      document.getElementById('f-second-due').value = p.secondDue || '';
+      document.getElementById('f-total-months').value = p.totalMonths || '';
+      document.getElementById('f-pays-left').value = (p.paysLeft !== null && p.paysLeft !== undefined) ? p.paysLeft : '';
+      document.getElementById('f-for-later').checked = !!p.forLater;
+      toggleRecurrenceFields();
+      recalcPaysLeftPreview();
+      return;
+    }
+  }
+
+  // Add mode (default / no matching id)
+  titleEl.textContent = 'Add a Payable';
+  btnEl.textContent = 'Add Payable';
+  document.getElementById('f-name').value = '';
+  document.getElementById('f-amount').value = '';
   document.getElementById('f-due').value = today();
   document.getElementById('f-recurrence').value = 'none';
   document.getElementById('f-start-date').value = '';
@@ -1509,7 +1674,11 @@ function openModal() {
   document.getElementById('f-pays-left').value = '';
   document.getElementById('f-second-due').value = '';
   document.getElementById('pays-left-preview').textContent = '';
+  document.getElementById('f-for-later').checked = false;
   toggleRecurrenceFields();
+}
+function editPayable(id) {
+  openModal(id);
 }
 function toggleRecurrenceFields() {
   const rec = document.getElementById('f-recurrence').value;
@@ -1587,6 +1756,8 @@ function addPayable() {
   const secondDue = document.getElementById('f-second-due').value || null;
   const totalMonths = parseInt(document.getElementById('f-total-months').value, 10) || null;
   const paysLeftOverride = document.getElementById('f-pays-left').value;
+  const forLater = document.getElementById('f-for-later').checked;
+  const editId = document.getElementById('f-edit-id').value;
 
   if (!name || isNaN(amount) || !due) {
     alert('Please fill in name, amount, and due date.');
@@ -1612,13 +1783,23 @@ function addPayable() {
     }
   }
 
-  payables.push({
-    id: Date.now() + '-' + Math.random(),
-    name, amount, due, category, recurrence,
-    startDate, endDate, secondDue, totalMonths, paysLeft,
-    paidHistory: [], // tracks each payment made: { date, amount }
-    paid: false, paidAt: null
-  });
+  if (editId) {
+    const p = payables.find(x => x.id === editId);
+    if (p) {
+      Object.assign(p, {
+        name, amount, due, category, recurrence,
+        startDate, endDate, secondDue, totalMonths, paysLeft, forLater
+      });
+    }
+  } else {
+    payables.push({
+      id: Date.now() + '-' + Math.random(),
+      name, amount, due, category, recurrence,
+      startDate, endDate, secondDue, totalMonths, paysLeft, forLater,
+      paidHistory: [], // tracks each payment made: { date, amount }
+      paid: false, paidAt: null
+    });
+  }
   save(); render(); closeModal();
   document.getElementById('f-name').value = '';
   document.getElementById('f-amount').value = '';
